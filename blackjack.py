@@ -1,5 +1,5 @@
-import intent, training, translations
-
+from pytlas import intent, training, translations
+import math
 import random
 
 class Card(object):
@@ -126,13 +126,13 @@ class Game(object):
     self.state = self.NEW_TURN
     return None
 
-  def new_turn(self, req):
+  def new_turn(self, req):        
     self.player_double = False
     self.player_action_counter = 0
     self.player_insurance = None
     self.player_bet = req.intent.slot('player_bet').first().value    
     if not self.player_bet:
-      return req.agent.ask('player_bet', req._('What is your bet?'))
+      return req.agent.ask('player_bet', req._('What is your bet?'))    
     self.player_money -= self.player_bet
     self.state = self.BEGIN_OF_TURN
     return None
@@ -150,24 +150,26 @@ class Game(object):
     if self.player_action == self.DOUBLE:
       self.player_double = True
       self.player_action = self.HIT        
-    self.state = self.PLAYER_ACTIONS
+    elif self.player_action == self.HIT or self.player_action == self.STAND:
+      self.state = self.PLAYER_ACTIONS
+    else:
+      req.agent.answer(req._('This is the first action during your turn, you can double to double your bet and draw one unique card, hit to draw card, stand to stop drawing'))
+      return req.agent.done()
     return None
 
   def player_actions(self, req):
     if self.player_action == self.HIT:
       self.player_hand.add(self.shoe.draw())
-      self.player_hit_counter++    
+      self.player_hit_counter =  self.player_hit_counter + 1
       req.agent.answer(req._('Your got a {0}').format(req._(self.player_hand.cards[self.player_hand.cards.count - 1])))
-
       if  self.player_hand.evaluate() > 21:
         self.state = self.END_OF_TURN
       elif self.player_hand.evaluate() == 21 or (self.player_double and self.player_hit_counter >= 3):
         self.state = self.DEALER_TURN
-
     elif self.player_action == self.STAND:
       self.state = self.DEALER_TURN
     else:
-      return on_blackjack_help(req)
+      req.agent.answer(req._('During your turn you can hit to draw card, stand to stop drawing'))
     return None
   
   def dealer_actions(self, req):
@@ -190,7 +192,7 @@ class Game(object):
       req.agent.answer(req._('Tie, no one won'))
     elif self.player_hand.evaluate() == 21:
       req.agent.answer(req._('Blackjack! You won'))
-      self.player_money += self.player_bet * 3/2        
+      self.player_money += math.ceil(self.player_bet * 3/2)        
     elif self.player_hand.evaluate() > self.dealer_hand.evaluate():
       req.agent.answer(req._('Congratulation! You won.'))
       self.player_money += self.player_bet * 2        
@@ -220,7 +222,9 @@ class Game(object):
       if self.state == self.DEALER_TURN:
         ret = self.dealer_actions(req)      
       if self.state == self.END_OF_TURN:
-        ret = self.end_of_turn(req)          
+        ret = self.end_of_turn(req)      
+      if ret:
+        return ret    
 
 # This entity will be shared among training data since it's not language specific
 
@@ -247,14 +251,22 @@ def en_data(): return """
   stand
 
 %[blackjack/double]
-  double
+  double  
 
-%[blackjack/]
+%[blackjack/bet]
+  I bet @[bet](type=int)
+  Again
+  On more time
+
+%[blackjack/quit]
+  I quit
+
+% [blackjack/help]
+  Give me some advice
+
+@[bet](type=int)
+  
 @[number_of_packets](type=int)
-  1
-  2
-  3
-  4
 """
 game = Game()
 
@@ -287,12 +299,26 @@ def on_double(req):
   game.player_action = game.DOUBLE
   return game.apply_rule(req)
 
+@intent('blackjack/bet')
+def on_bet(req):
+  global game
+  game.player_action = game.BET
+  return game.apply_rule(req)
+"""
 @intent('blackjack/split')
 def on_split(req):
   global game
   game.player_action = game.SPLIT
   return game.apply_rule(req)
+"""
 
+"""
+@intent('blackjack/insurance')
+def on_insurance(req):
+  global game
+  game.player_action = game.INSURANCE
+  return game.apply_rule(req)
+"""
 @intent('blackjack/bet')
 def on_bet(req):
   global game
