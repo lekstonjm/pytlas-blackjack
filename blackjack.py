@@ -52,26 +52,23 @@ class Hand(object):
   def add(self, card):
     self.cards.append(card)
 
+  def number_of_ace(self):
+    number = 0
+    for card in self.cards:
+      if card.is_ace:
+        number += 1
+    return number
+
   def evaluate(self):
-    test_count = 0
     value = 0
-    test_again = True
-    while test_again:
-      ace_count = test_count
-      test_count += 1
-      test_again = False
-      for card in self.cards:                    
-        if card.is_ace:
-          if ace_count > 0:
-            value += 1
-            ace_count -= 1
-          else:
-            value += 11
-            test_again = True
-        else:
-          value += card.value
-      if test_again and value < 21:
-        test_again = False
+    for card in self.cards:
+      if card.is_ace:
+        fluid_value = value + 11
+        if fluid_value > 21:
+          fluid_value = value + 1
+        value = fluid_value
+      else:
+        value += card.value
     return value
 
   def clear(self):
