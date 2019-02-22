@@ -2,6 +2,7 @@ from pytlas import intent, training, translations
 import math
 import random
 
+
 class Card(object):
     def __init__(self, color, figure, value):
         self.color = color
@@ -72,6 +73,12 @@ class Hand(object):
     def clear(self):
         self.cards = []
 
+    def last(self):
+        if len(self.cards) > 0:
+          return self.cards[len(self.cards) - 1]
+        else:
+          return None
+
     def __str__(self):
         msg = ''
         delimiter = ""
@@ -114,30 +121,44 @@ class Game(object):
     self.shoe = Shoe()
   
   def start(self, req):
-    number_of_packets = req.intent.slot('number_of_packets').first().value
+    print('start')
+    
+    try: 
+      number_of_packets = req.intent.slot('number').first().value
+    except ValueError:
+      number_of_packets = 1
+
     if not number_of_packets:
       number_of_packets = 1 
       self.shoe.create(number_of_packets)      
     req.agent.answer(req._('Welcome in blackjack game'))
     req.agent.answer(req._('A shoe containing {0} packets has been shuffled').format(number_of_packets))
     req.agent.answer(req._('You start with 100$  ships'))
+    req.agent.answer(req._('Bet to start the turn'))
     self.player_bet = None
     self.player_action = None
     self.state = self.NEW_TURN
-    return None
+    return self
 
   def new_turn(self, req):        
+    print('new_turn')
     self.player_double = False
     self.player_action_counter = 0
     self.player_insurance = None
-    self.player_bet = req.intent.slot('player_bet').first().value    
+    try:
+      print (req.intent.slot('bet').first().value)
+      self.player_bet = int(req.intent.slot('bet').first().value)    
+    except ValueError:
+      self.player_bet = None
     if not self.player_bet:
+      print('no bet')
       return req.agent.ask('player_bet', req._('What is your bet?'))    
-    self.player_money -= self.player_bet
+    self.player_money -=  self.player_bet
     self.state = self.BEGIN_OF_TURN
-    return None
+    return self
 
   def begin_of_turn(self, req):
+    print('begin_of_turn')
     self.player_hand.add(self.shoe.draw())
     self.player_hand.add(self.shoe.draw())
     self.dealer_hand.add(self.shoe.draw())
@@ -147,6 +168,7 @@ class Game(object):
     return req.agent.done()
 
   def player_first_action(self, req):
+    print('player_first_action')
     if self.player_action == self.DOUBLE:
       self.player_double = True
       self.player_action = self.HIT        
@@ -155,32 +177,36 @@ class Game(object):
     else:
       req.agent.answer(req._('This is the first action during your turn, you can double to double your bet and draw one unique card, hit to draw card, stand to stop drawing'))
       return req.agent.done()
-    return None
+    return self
 
   def player_actions(self, req):
+    print('player_actions')
     if self.player_action == self.HIT:
       self.player_hand.add(self.shoe.draw())
       self.player_hit_counter =  self.player_hit_counter + 1
-      req.agent.answer(req._('Your got a {0}').format(req._(self.player_hand.cards[self.player_hand.cards.count - 1])))
+      req.agent.answer(req._('Your got a {0}').format(req._(self.player_hand.last())))
       if  self.player_hand.evaluate() > 21:
         self.state = self.END_OF_TURN
       elif self.player_hand.evaluate() == 21 or (self.player_double and self.player_hit_counter >= 3):
-        self.state = self.DEALER_TURN
+        self.state = self.DEALER_ACTIONS
+      else:
+        return req.agent.done()
     elif self.player_action == self.STAND:
-      self.state = self.DEALER_TURN
+      self.state = self.DEALER_ACTIONS
     else:
       req.agent.answer(req._('During your turn you can hit to draw card, stand to stop drawing'))
-    return None
+      return req.agent.done()
+    return self
   
   def dealer_actions(self, req):
     again = True
     while again:
         self.dealer_hand.add(self.shoe.draw())
-        req.agent.answer(req._('dealer got a {0}').format(req._(self.dealer_hand.cards[self.dealer_hand.cards.count - 1])))      
+        req.agent.answer(req._('dealer got a {0}').format(req._(self.dealer_hand.last())))      
         if self.dealer_hand.evaluate() > self.player_hand.evaluate() or self.dealer_hand.evaluate() > 17:
             again = False
     self.state = self.END_OF_TURN
-    return None
+    return self
 
   def end_of_turn(self, req):
     if self.player_hand.evaluate() > 21:
@@ -206,24 +232,24 @@ class Game(object):
 
 
   def apply_rule(self, req):
-    while(true):
+    print('apply rule')
+    while(True):
       if self.state == self.START:
         ret = self.start(req)
       elif self.state == self.NEW_TURN:
         ret = self.new_turn(req)
-      elif self.state == self.WAIT_NEW_TURN:
-        ret = self.wait_for_new_turn(req)
       elif self.state == self.BEGIN_OF_TURN:
         ret = self.begin_of_turn(req)
       elif self.state == self.PLAYER_FIRST_ACTION:
         ret = self.player_first_action(req)
       elif self.state == self.PLAYER_ACTIONS:
         ret = self.player_actions(req)
-      if self.state == self.DEALER_TURN:
+      if self.state == self.DEALER_ACTIONS:
         ret = self.dealer_actions(req)      
       if self.state == self.END_OF_TURN:
-        ret = self.end_of_turn(req)      
-      if ret:
+        ret = self.end_of_turn(req)   
+      print(ret)   
+      if ret != self:
         return ret    
 
 # This entity will be shared among training data since it's not language specific
@@ -242,7 +268,12 @@ def en_data(): return """
 %[play_blackjack]
   I want play blackjack
   let's play blackjack
-  play blackjack with @[number_of_packets] packets
+  play blackjack with @[number] packets
+
+@[number](type=number)
+  1
+  2
+  3
 
 %[blackjack/hit]
   hit
@@ -254,20 +285,23 @@ def en_data(): return """
   double  
 
 %[blackjack/bet]
-  I bet @[bet](type=int)
+  I bet @[bet]
   Again
   On more time
+
+
+@[bet](type=number)
+  1
+  2
+  3
 
 %[blackjack/quit]
   I quit
 
 % [blackjack/help]
   Give me some advice
-
-@[bet](type=int)
-  
-@[number_of_packets](type=int)
 """
+
 game = Game()
 
 @intent('help_blackjack')
@@ -277,6 +311,7 @@ def on_help_blackjack(req):
 
 @intent('play_blackjack')
 def on_play_blackjack(req):
+  print('on_play_blackjack')
   req.agent.context('blackjack')
   global game
   return game.apply_rule(req)
