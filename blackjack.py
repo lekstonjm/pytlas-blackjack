@@ -1,91 +1,95 @@
+import logging
 from pytlas import intent, training, translations
 import math
 import random
 
-
 class Card(object):
-    def __init__(self, color, figure, value):
-        self.color = color
-        self.figure = figure
-        self.value = value
-        self.is_ace = False
-        if self.figure == 'ace':
-            self.is_ace = True
+  def __init__(self, color, figure, value):
+    self.color = color
+    self.figure = figure
+    self.value = value
+    self.is_ace = False
+    if self.figure == 'ace':
+      self.is_ace = True
 
-    def __str__(self):
-        return '{0} of {1}'.format(self.figure, self.color)
+  def __str__(self):
+    return '{0} of {1}'.format(self.figure, self.color)
 
 class Shoe(object):
-    def __init__(self):
-        self.figures = ['ace','2','3','4','5','6','7','8','9','10','jack','queen','king']
-        self.colors = ['clubs','diamonds', 'hearts','spades']
-        self.values = [1,2,3,4,5,6,7,8,9,10,10,10,10]
-        self.cards = []
+  def __init__(self):
+    self.figures = ['ace','2','3','4','5','6','7','8','9','10','jack','queen','king']
+    self.colors = ['clubs','diamonds', 'hearts','spades']
+    self.values = [1,2,3,4,5,6,7,8,9,10,10,10,10]
+    self.cards = []
     
-    def create(self, shoe_number):
-        for _packet_index in range(shoe_number):
-            for color in self.colors: 
-                for index in range(0,len(self.figures)):                 
-                    value = self.values[index]
-                    figure = self.figures[index]
-                    card = Card(color, figure, value)
-                    self.cards.append(card)
+  def create(self, shoe_number):
+    for _packet_index in range(shoe_number):
+      for color in self.colors: 
+        for index in range(0,len(self.figures)):                 
+            value = self.values[index]
+            figure = self.figures[index]
+            card = Card(color, figure, value)
+            self.cards.append(card)
 
-    def shuffle(self):
-        counter = len(self.cards)
-        while counter > 0:
-            index = random.randint(0, counter - 1)
-            temp = self.cards[index]
-            self.cards[index] = self.cards[counter - 1]
-            self.cards[counter-1] = temp
-            counter = counter - 1
+  def shuffle(self):
+    counter = len(self.cards)
+    while counter > 0:
+      index = random.randint(0, counter - 1)
+      temp = self.cards[index]
+      self.cards[index] = self.cards[counter - 1]
+      self.cards[counter-1] = temp
+      counter = counter - 1
 
-    def draw(self):
-        card = self.cards[0]
-        self.cards = self.cards[-(len(self.cards)-1):]
-        return card
+  def draw(self):
+    card = self.cards[0]
+    self.cards = self.cards[-(len(self.cards)-1):]
+    return card
 
 class Hand(object):
-    def __init__(self):
-        self.cards = []
+  def __init__(self):
+    self.cards = []
 
-    def add(self, card):
-        self.cards.append(card)
+  def add(self, card):
+    self.cards.append(card)
 
-    def evaluate(self):
-        test_count = 0
-        value = 0
-        test_again = True
-        while test_again:
-            ace_count = test_count
-            test_count += 1
-            test_again = False
-            for card in self.cards:                    
-                if card.is_ace:
-                    if ace_count > 0:
-                        value += 1
-                        ace_count -= 1
-                    else:
-                        value += 11
-                        test_again = True
-        return value
-
-    def clear(self):
-        self.cards = []
-
-    def last(self):
-        if len(self.cards) > 0:
-          return self.cards[len(self.cards) - 1]
+  def evaluate(self):
+    test_count = 0
+    value = 0
+    test_again = True
+    while test_again:
+      ace_count = test_count
+      test_count += 1
+      test_again = False
+      for card in self.cards:                    
+        if card.is_ace:
+          if ace_count > 0:
+            value += 1
+            ace_count -= 1
+          else:
+            value += 11
+            test_again = True
         else:
-          return None
+          value += card.value
+      if test_again and value < 21:
+        test_again = False
+    return value
 
-    def __str__(self):
-        msg = ''
-        delimiter = ""
-        for card in self.cards:
-            msg += delimiter + str(card)
-            delimiter = ", "
-        return msg
+  def clear(self):
+    self.cards = []
+
+  def last(self):
+    if len(self.cards) > 0:
+      return self.cards[len(self.cards) - 1]
+    else:
+      return None
+
+  def __str__(self):
+    msg = ''
+    delimiter = ""
+    for card in self.cards:
+      msg += delimiter + str(card)
+      delimiter = ", "
+    return msg
 
 class Game(object):
   # game state
@@ -116,21 +120,23 @@ class Game(object):
     self.player_double = False
     self.player_hit_counter = 0
     self.player_insurance = None
+    self.number_of_packets = 1
     self.player_hand = Hand()
     self.dealer_hand = Hand()
     self.shoe = Shoe()
+    self._logger = logging.getLogger(self.__class__.__name__.lower())
+
   
   def start(self, req):
-    print('start')
-    
+    self._logger.debug('start')   
+    number_of_packets = 1
     try: 
-      number_of_packets = req.intent.slot('number').first().value
-    except ValueError:
-      number_of_packets = 1
-
-    if not number_of_packets:
-      number_of_packets = 1 
-      self.shoe.create(number_of_packets)      
+      number_of_packets = int(req.intent.slot('number_of_packets').first().value)
+    except:
+      pass
+    self.number_of_packets = number_of_packets
+    self.shoe.create(self.number_of_packets)
+    self.shoe.shuffle()
     req.agent.answer(req._('Welcome in blackjack game'))
     req.agent.answer(req._('A shoe containing {0} packets has been shuffled').format(number_of_packets))
     req.agent.answer(req._('You start with 100$  ships'))
@@ -141,34 +147,45 @@ class Game(object):
     return self
 
   def new_turn(self, req):        
-    print('new_turn')
+    self._logger.debug('new_turn')
     self.player_double = False
     self.player_action_counter = 0
     self.player_insurance = None
-    try:
-      print (req.intent.slot('bet').first().value)
-      self.player_bet = int(req.intent.slot('bet').first().value)    
-    except ValueError:
-      self.player_bet = None
+    self.player_bet = None
+    if req.intent.slot('bet').first().value != None:
+      try:
+        self.player_bet = int(req.intent.slot('bet').first().value)    
+      except:
+        pass
+    
     if not self.player_bet:
-      print('no bet')
-      return req.agent.ask('player_bet', req._('What is your bet?'))    
+      return req.agent.ask('bet', req._('What is your bet?'))    
     self.player_money -=  self.player_bet
     self.state = self.BEGIN_OF_TURN
     return self
 
   def begin_of_turn(self, req):
-    print('begin_of_turn')
-    self.player_hand.add(self.shoe.draw())
-    self.player_hand.add(self.shoe.draw())
-    self.dealer_hand.add(self.shoe.draw())
+    self._logger.debug('begin_of_turn')
+    self.player_hand.clear()
+    self.dealer_hand.clear()
+    
+    try:
+      self.player_hand.add(self.shoe.draw())
+      self.player_hand.add(self.shoe.draw())
+      self.dealer_hand.add(self.shoe.draw())
+      self.dealer_hand.add(self.shoe.draw())
+    except:
+      self.state = self.END_OF_TURN
+      req.agent.answer(req._('no more card'))
+      return req.agent.done()
+
     req.agent.answer(req._('You got a {0} and a {1}').format(req._(self.player_hand.cards[0]), req._(self.player_hand.cards[1])))
     req.agent.answer(req._('dealer got a {0} and a face down card').format(req._(self.dealer_hand.cards[0])))
     self.state = self.PLAYER_FIRST_ACTION
     return req.agent.done()
 
   def player_first_action(self, req):
-    print('player_first_action')
+    self._logger.debug('player_first_action')
     if self.player_action == self.DOUBLE:
       self.player_double = True
       self.player_action = self.HIT        
@@ -180,9 +197,15 @@ class Game(object):
     return self
 
   def player_actions(self, req):
-    print('player_actions')
+    self._logger.debug('player_actions')
     if self.player_action == self.HIT:
-      self.player_hand.add(self.shoe.draw())
+      try:
+        self.player_hand.add(self.shoe.draw())
+      except:
+        self.state = self.END_OF_TURN
+        req.agent.answer(req._('no more card'))
+        return req.agent.done()
+
       self.player_hit_counter =  self.player_hit_counter + 1
       req.agent.answer(req._('Your got a {0}').format(req._(self.player_hand.last())))
       if  self.player_hand.evaluate() > 21:
@@ -199,16 +222,24 @@ class Game(object):
     return self
   
   def dealer_actions(self, req):
-    again = True
-    while again:
+    self._logger.debug('dealer_actions')
+    req.agent.answer(req._('dealer hidden card is a {0}').format(req._(self.dealer_hand.last())))      
+    while True:
+      if self.dealer_hand.evaluate() > self.player_hand.evaluate() or self.dealer_hand.evaluate() > 17:
+        self.state = self.END_OF_TURN
+        return self
+      try:
         self.dealer_hand.add(self.shoe.draw())
-        req.agent.answer(req._('dealer got a {0}').format(req._(self.dealer_hand.last())))      
-        if self.dealer_hand.evaluate() > self.player_hand.evaluate() or self.dealer_hand.evaluate() > 17:
-            again = False
-    self.state = self.END_OF_TURN
-    return self
+      except:
+        self.state = self.END_OF_TURN
+        req.agent.answer(req._('no more card'))
+        return req.agent.done()
+
+      req.agent.answer(req._('dealer got a {0}').format(req._(self.dealer_hand.last())))      
+      self._logger.info("dealer hand : %i - player hand : %i",self.dealer_hand.evaluate(), self.player_hand.evaluate(),exc_info = 0)
 
   def end_of_turn(self, req):
+    self._logger.debug('end_of_turn')
     if self.player_hand.evaluate() > 21:
       req.agent.answer(req._('Unfortunately! your hand is over 21. You lost'))
     elif self.dealer_hand.evaluate() > 21:
@@ -226,14 +257,21 @@ class Game(object):
       req.agent.answer(req._('Unfortunately! You lost'))
     else:
       req.agent.answer(req._('Tie'))
+
+    if len(self.shoe.cards) == 0:
+      req.agent.answer(req._('Shoe is empty'))
+      req.agent.answer(req._('Create a new one'))
+      self.shoe.create(self.number_of_packets)
+      self.shoe.shuffle()
+
     req.agent.answer(req._('Bet for a new turn'))
     self.state = self.NEW_TURN
     return req.agent.done()
 
 
   def apply_rule(self, req):
-    print('apply rule')
     while(True):
+      self._logger.info("apply rule %i", self.state,exc_info = 0)  
       if self.state == self.START:
         ret = self.start(req)
       elif self.state == self.NEW_TURN:
@@ -248,7 +286,8 @@ class Game(object):
         ret = self.dealer_actions(req)      
       if self.state == self.END_OF_TURN:
         ret = self.end_of_turn(req)   
-      print(ret)   
+      
+      self._logger.info(ret)   
       if ret != self:
         return ret    
 
@@ -268,9 +307,9 @@ def en_data(): return """
 %[play_blackjack]
   I want play blackjack
   let's play blackjack
-  play blackjack with @[number] packets
+  play blackjack with @[number_of_packets] packets
 
-@[number](type=number)
+@[number_of_packets](type=number)
   1
   2
   3
@@ -311,7 +350,6 @@ def on_help_blackjack(req):
 
 @intent('play_blackjack')
 def on_play_blackjack(req):
-  print('on_play_blackjack')
   req.agent.context('blackjack')
   global game
   return game.apply_rule(req)
@@ -354,11 +392,6 @@ def on_insurance(req):
   game.player_action = game.INSURANCE
   return game.apply_rule(req)
 """
-@intent('blackjack/bet')
-def on_bet(req):
-  global game
-  game.player_action = game.BET
-  return game.apply_rule(req)
 
 @intent('blackjack/help')
 def on_help(req):
