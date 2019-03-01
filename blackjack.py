@@ -173,11 +173,11 @@ class Game(object):
       self.dealer_hand.add(self.shoe.draw())
     except:
       self.state = self.END_OF_TURN
-      req.agent.answer(req._('no more card'))
+      req.agent.answer(req._('No more card'))
       return req.agent.done()
 
     req.agent.answer(req._('You got a {0} and a {1}').format(req._(self.player_hand.cards[0]), req._(self.player_hand.cards[1])))
-    req.agent.answer(req._('dealer got a {0} and a face down card').format(req._(self.dealer_hand.cards[0])))
+    req.agent.answer(req._('Dealer got a {0} and a face down card').format(req._(self.dealer_hand.cards[0])))
     self.state = self.PLAYER_FIRST_ACTION
     return req.agent.done()
 
@@ -189,7 +189,7 @@ class Game(object):
     elif self.player_action == self.HIT or self.player_action == self.STAND:
       self.state = self.PLAYER_ACTIONS
     else:
-      req.agent.answer(req._('This is the first action during your turn, you can double to double your bet and draw one unique card, hit to draw card, stand to stop drawing'))
+      req.agent.answer(req._(en_help))
       return req.agent.done()
     return self
 
@@ -200,7 +200,7 @@ class Game(object):
         self.player_hand.add(self.shoe.draw())
       except:
         self.state = self.END_OF_TURN
-        req.agent.answer(req._('no more card'))
+        req.agent.answer(req._('No more card'))
         return req.agent.done()
 
       self.player_hit_counter =  self.player_hit_counter + 1
@@ -214,13 +214,13 @@ class Game(object):
     elif self.player_action == self.STAND:
       self.state = self.DEALER_ACTIONS
     else:
-      req.agent.answer(req._('During your turn you can hit to draw card, stand to stop drawing'))
+      req.agent.answer(req._(en_help))
       return req.agent.done()
     return self
   
   def dealer_actions(self, req):
     self._logger.debug('dealer_actions')
-    req.agent.answer(req._('dealer hidden card is a {0}').format(req._(self.dealer_hand.last())))      
+    req.agent.answer(req._('Dealer hidden card is a {0}').format(req._(self.dealer_hand.last())))      
     while True:
       if self.dealer_hand.evaluate() > self.player_hand.evaluate() or self.dealer_hand.evaluate() > 17:
         self.state = self.END_OF_TURN
@@ -229,11 +229,11 @@ class Game(object):
         self.dealer_hand.add(self.shoe.draw())
       except:
         self.state = self.END_OF_TURN
-        req.agent.answer(req._('no more card'))
+        req.agent.answer(req._('No more card'))
         return req.agent.done()
 
-      req.agent.answer(req._('dealer got a {0}').format(req._(self.dealer_hand.last())))      
-      self._logger.info("dealer hand : %i - player hand : %i",self.dealer_hand.evaluate(), self.player_hand.evaluate(),exc_info = 0)
+      req.agent.answer(req._('Dealer got a {0}').format(req._(self.dealer_hand.last())))      
+      self._logger.info("Dealer hand : %i - Player hand : %i",self.dealer_hand.evaluate(), self.player_hand.evaluate(),exc_info = 0)
 
   def end_of_turn(self, req):
     self._logger.debug('end_of_turn')
@@ -290,9 +290,10 @@ class Game(object):
 
 # This entity will be shared among training data since it's not language specific
 
-help_en="""
+en_help="""
 Let's play blackjack
 """
+
 
 @training('en')
 def en_data(): return """
@@ -313,6 +314,7 @@ def en_data(): return """
 
 %[blackjack/hit]
   hit
+  hit me
 
 %[blackjack/stand]
   stand
@@ -324,6 +326,7 @@ def en_data(): return """
   I bet @[bet]
   Again
   On more time
+  deal for @[bet]
 
 
 @[bet](type=number)
@@ -338,11 +341,113 @@ def en_data(): return """
   Give me some advice
 """
 
+fr_help="""
+Le blackjack est un jeu de carte de un à plusieurs joueurs qui jouent contre un croupier. 
+Les  joueurs qui souhaitent jouer déposent un pari (par exemple "Je mise  2"). 
+Le croupier ensuite distribue 2 cartes face ouverte à chaque joueur et prend  deux cartes dont une face cachée.
+Si à un moment le joueurs totalise 21, il fait "blackjack" il ne peut recevoir de carte supplémentaire
+Si à un moment le joueur dépasse 21, il saute et à automatiquement perdu
+les joueurs ont la possibilités chacun leur tour de 
+Soit "doubler" dans ce cas il une seule et dernière carte supplémentaire et double sa mise en cas de victoire 
+Soit "tirer" dans ce cas il reçoit une carte supplémentaire
+Soit "refuser" dans ce cas sa main est fait et il ne reçoit plus de carte supplémentaire. 
+Ensuite le croupier revèle sa carte caché et tire jusqu'à obtenir au moins 17.
+Si la main du joeur totalise plus de 21, il a perdu et perd sa mise
+Si la main du  joueur et du croupier totalisent le même résultat il y a "égalité" tie et le joueur récupère sa mise
+Si la main du joueur totalise 21, il fait "blackjack", il récupère une prime équivalente à  3/2 fois sa  mise
+Si la main du joueur totalise plus de point que celle du croupier le joueur gagne et récupère une prime de 1 fois sa mise
+Si la main du croupier depasse 21, il saute et le joueur gagne, il récupère une prime de 1 fois sa mise
+Dans le cas contraire, il croupier gagne et le joeur perd sa mise 
+Une main vaut la somme des valeurs des cartes qui la compose.
+Les cartes valent leur valeur chiffrée sauf pour les "bûches" (valet, dame , roi) qui valent 10.
+L'as est un peu spéciale, il vaut soit 1, soit 10 selon que la main depasse ou non 21. Ainsi As + 9 vaut 20, As + 9 + 2 vaut 12.
+"""
+
+@training('fr')
+def fr_data(): return """
+%[help_blackjack]
+  quelles sont les rêgles du blackjack
+  comment se joue le blackjack
+
+%[play_blackjack]
+  je veux joueur au blackjack
+  jouer au blackjack avec @[number_of_packets] paquets
+  lancer le blackjack
+
+@[number_of_packets](type=number)
+  1
+  2
+  3
+
+%[blackjack/hit]
+  hit
+  tirer
+  encore
+  encore une
+
+%[blackjack/stand]
+  stand
+  arrêter
+  rester
+  refuser
+
+
+%[blackjack/double]
+  double  
+  doubler
+
+%[blackjack/bet]
+  je mise @[bet]
+  nouvelle donne
+  donner pour @[bet]
+
+
+@[bet](type=number)
+  1
+  2
+  3
+
+%[blackjack/quit]
+  quitter
+  je quitte le jeu
+
+% [blackjack/help]
+  quelles sont les rêgles
+"""
+
+@translations('fr')
+def fr_translations(): return {
+  en_help : fr_help,
+  'Goodbye': 'Au revoir et à bientôt',
+  'Welcome in blackjack game':'Bienvenue dans le jeu du Blackjack',
+  'A shoe containing {0} packets has been shuffled' : 'Un sabot contenant {0} paquet(s) de carte vient d\'être battu',
+  'You start with 100$  ships' : 'Vous commencez avec 100$ de jetons',
+  'Bet to start the turn' : 'Miser pour commencer le jeu',
+  'What is your bet?' : 'Qu\'elle est votre mise?',
+  'No more card' : 'Plus de carte',
+  'You got a {0} and a {1}': 'Vous avez reçu {0} et {1}',
+  'Dealer got a {0} and a face down card':'Le croupier vient de recevoir {0} et une carte face cachée',
+  'Your got a {0}': 'Vous avez reçu {0}',
+  'Dealer hidden card is a {0}': 'La carte face cachée du croupier est {0}',
+  'Dealer got a {0}':'Le croupier vient de recevoir {0}',
+  'Unfortunately! your hand is over 21. You lost':'Malheureusement! Votre main dépasse 21. Vous avez perdu',
+  'Congratulation! dealer hand is over 21. You won':'Félicitation! Le main du croupier dépasse 21. Vous avez gagné',
+  'Tie, no one won':'Egalité, personne n\'est vainqueur.',
+  'Blackjack! You won':'Blackjack! Vous avez gagné',
+  'Congratulation! You won.':'Félicitation! Vous avez gagner',
+  'Unfortunately! You lost':'Malheureusement! Vous avez perdu',
+  'Tie' : 'Egalité',
+  'Shoe is empty': 'Le sabot est vide',
+  'Create a new one' : 'Remplissage d\'un nouveau sabot',
+  'Bet for a new turn' : 'Misez pour jouer'
+}
+
+
 game = Game()
 
 @intent('help_blackjack')
 def on_help_blackjack(req):
-  req.agent.answer(req._('general help'))
+  req.agent.answer(req._(en_help))
   return req.agent.done()
 
 @intent('play_blackjack')
