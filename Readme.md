@@ -10,10 +10,15 @@ see for details: https://github.com/atlassistant/pytlas
 Supported languages
 -------------------
 - English
+- Français
 
 Typical sentences
 -----------------
-- let's play blackjack
-- give me a card
-- that's all
-- show my hand
+- play blackjack
+- joue au blackjack
+- bet 5
+- miser 5
+- hit
+- donne
+- stand
+- refuser
