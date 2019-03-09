@@ -9,7 +9,7 @@ class Card(object):
     self.figure = figure
     self.value = value
     self.is_ace = False
-    if self.figure == 'ace':
+    if self.figure == 'an ace':
       self.is_ace = True
 
   def __str__(self):
@@ -20,7 +20,7 @@ class Card(object):
 
 class Shoe(object):
   def __init__(self):
-    self.figures = ['ace','2','3','4','5','6','7','8','9','10','jack','queen','king']
+    self.figures = ['an ace','a 2','a 3','a 4','a 5','a 6','a 7','a 8','a 9','a 10','a jack','a queen','a king']
     self.colors = ['clubs','diamonds', 'hearts','spades']
     self.values = [1,2,3,4,5,6,7,8,9,10,10,10,10]
     self.cards = []
@@ -64,14 +64,20 @@ class Hand(object):
 
   def evaluate(self):
     value = 0
-    for card in self.cards:
-      if card.is_ace:
-        fluid_value = value + 11
-        if fluid_value > 21:
-          fluid_value = value + 1
-        value = fluid_value
-      else:
-        value += card.value
+    for i in range(self.number_of_ace()+1):
+      fluid_ace = i
+      value = 0
+      for card in self.cards:        
+        if card.is_ace:
+          if fluid_ace > 0:
+            value += 1
+            fluid_ace -= 1
+          else:
+            value += 11
+        else:
+          value += card.value
+      if value <= 21:
+        return value
     return value
 
   def clear(self):
@@ -101,14 +107,16 @@ class Hand(object):
 
 class Game(object):
   # game state
-  START = 0
+  START = 0  
   NEW_TURN = 1
   BEGIN_OF_TURN = 2
   PLAYER_FIRST_ACTION = 3
   PLAYER_ACTIONS = 4
   DEALER_ACTIONS = 5
   END_OF_TURN = 6
+
   #player action
+  NONE = -1
   HIT = 0
   STAND = 1
   DOUBLE = 2
@@ -135,9 +143,7 @@ class Game(object):
     self.shoe = Shoe()
     self._logger = logging.getLogger(self.__class__.__name__.lower())
 
-  
   def start(self, req):
-    self._logger.debug('start')   
     number_of_packets = 1
     try: 
       number_of_packets = int(req.intent.slot('number_of_packets').first().value)
@@ -147,38 +153,38 @@ class Game(object):
     self.shoe.create(self.number_of_packets)
     self.shoe.shuffle()
     req.agent.answer(req._('Welcome in blackjack game'))
-    req.agent.answer(req._('A shoe containing {0} packets has been shuffled').format(number_of_packets))
+    req.agent.answer(req._('A shoe containing {0} packets has been shuffled').format(self.number_of_packets))
     req.agent.answer(req._('You start with 100$  ships'))
-    req.agent.answer(req._('Bet to start the turn'))
     self.player_bet = None
     self.player_action = None
     self.state = self.NEW_TURN
     return self
 
   def new_turn(self, req):        
-    self._logger.debug('new_turn')
     self.player_double = False
     self.player_action_counter = 0
     self.player_insurance = None
     self.player_bet = None
     self.dealer_hidden_card = None
-    if req.intent.slot('bet').first().value != None:
-      try:
-        self.player_bet = int(req.intent.slot('bet').first().value)    
-      except:
-        pass
-    
-    if not self.player_bet:
-      return req.agent.ask('bet', req._('What is your bet?'))    
-    self.player_bankroll -=  self.player_bet
-    self.state = self.BEGIN_OF_TURN
+    if self.player_action == self.BET:
+      if req.intent.slot('bet').first().value != None:
+        try:
+          self.player_bet = int(req.intent.slot('bet').first().value)    
+        except:
+          pass    
+      if not self.player_bet:
+        return req.agent.ask('bet', req._('What is your bet?'))    
+      self.player_bankroll -=  self.player_bet
+      self.state = self.BEGIN_OF_TURN
+    else:
+      req.agent.answer(req._('Bet to play'))
+      return req.agent.done()
+    self.player_action = self.NONE
     return self
 
   def begin_of_turn(self, req):
-    self._logger.debug('begin_of_turn')
     self.player_hand.clear()
-    self.dealer_hand.clear()
-    
+    self.dealer_hand.clear()    
     try:
       self.player_hand.add(self.shoe.draw())
       self.player_hand.add(self.shoe.draw())
@@ -187,27 +193,30 @@ class Game(object):
     except:
       self.state = self.END_OF_TURN
       req.agent.answer(req._('No more card'))
-      return req.agent.done()
-
-    req.agent.answer(req._('You got a {0} and a {1}').format(req._(self.player_hand.cards[0]), req._(self.player_hand.cards[1])))
-    req.agent.answer(req._('Dealer got a {0} and a face down card').format(req._(self.dealer_hand.cards[0])))
+      self.player_action = self.NONE
+      return self
+    req.agent.answer(req._('You got {0} and {1}').format(req._(self.player_hand.cards[0].answer(req)), req._(self.player_hand.cards[1].answer(req))))
+    if self.player_hand.evaluate() == 21:
+      req.agent.answer(req._('Blackjack!'))
+      req.agent.answer(req._('Dealer got {0} and a face down card').format(req._(self.dealer_hand.cards[0].answer(req))))
+      self.state = self.DEALER_ACTIONS
+      return self
+    req.agent.answer(req._('Dealer got {0} and a face down card').format(req._(self.dealer_hand.cards[0].answer(req))))
     self.state = self.PLAYER_FIRST_ACTION
     return req.agent.done()
 
   def player_first_action(self, req):
-    self._logger.debug('player_first_action')
     if self.player_action == self.DOUBLE:
       self.player_double = True
       self.player_action = self.HIT        
     elif self.player_action == self.HIT or self.player_action == self.STAND:
       self.state = self.PLAYER_ACTIONS
     else:
-      req.agent.answer(req._(en_help))
+      req.agent.answer(req._('You can either double, hit or stand'))
       return req.agent.done()
     return self
 
   def player_actions(self, req):
-    self._logger.debug('player_actions')
     if self.player_action == self.HIT:
       try:
         self.player_hand.add(self.shoe.draw())
@@ -215,73 +224,71 @@ class Game(object):
         self.state = self.END_OF_TURN
         req.agent.answer(req._('No more card'))
         return req.agent.done()
-
-      self.player_hit_counter =  self.player_hit_counter + 1
-      req.agent.answer(req._('Your got a {0}').format(req._(self.player_hand.last())))
+      req.agent.answer(req._('Your got {0}').format(req._(self.player_hand.last().answer(req))))
       if  self.player_hand.evaluate() > 21:
+        req.agent.answer(req._('You have busted!'))
         self.state = self.END_OF_TURN
-      elif self.player_hand.evaluate() == 21 or (self.player_double and self.player_hit_counter >= 3):
+      elif self.player_hand.evaluate() == 21:
+        req.agent.answer(req._('Blackjack!'))
+        self.state = self.DEALER_ACTIONS
+      elif self.player_double:
         self.state = self.DEALER_ACTIONS
       else:
         return req.agent.done()
     elif self.player_action == self.STAND:
       self.state = self.DEALER_ACTIONS
     else:
-      req.agent.answer(req._(en_help))
+      req.agent.answer(req._('You can either hit or stand'))
       return req.agent.done()
+    self.player_action = self.NONE
     return self
   
   def dealer_actions(self, req):
-    self._logger.debug('dealer_actions')
     self.dealer_hand.add(self.dealer_hidden_card)
     self.dealer_hidden_card = None
-    req.agent.answer(req._('Dealer hidden card is a {0}').format(req._(self.dealer_hand.last())))      
+    req.agent.answer(req._('Dealer hidden card is {0}').format(req._(self.dealer_hand.last().answer(req))))      
     while True:
-      if self.dealer_hand.evaluate() > self.player_hand.evaluate() or self.dealer_hand.evaluate() > 17:
+      if self.dealer_hand.evaluate() > self.player_hand.evaluate() or self.dealer_hand.evaluate() >= 17:
+        if self.dealer_hand.evaluate() > 21:
+          req.agent.answer(req._('Dealer has busted!'))
+        elif self.dealer_hand.evaluate() == 21:
+          req.agent.answer(req._('Blackjack!'))              
         self.state = self.END_OF_TURN
         return self
       try:
         self.dealer_hand.add(self.shoe.draw())
+        req.agent.answer(req._('Dealer got {0}').format(req._(self.dealer_hand.last().answer(req))))      
       except:
         self.state = self.END_OF_TURN
         req.agent.answer(req._('No more card'))
         return req.agent.done()
 
-      req.agent.answer(req._('Dealer got a {0}').format(req._(self.dealer_hand.last())))      
-      self._logger.info("Dealer hand : %i - Player hand : %i",self.dealer_hand.evaluate(), self.player_hand.evaluate(),exc_info = 0)
-
   def end_of_turn(self, req):
-    self._logger.debug('end_of_turn')
-    req.agent.answer(req._('Your hand contains : {0}').format(game.player_hand.answer(req)))
-    req.agent.answer(req._('The dealer hand contains (only visible cards) : {0}').format(game.dealer_hand.answer(req)))
     if self.player_hand.evaluate() > 21:
-      req.agent.answer(req._('Unfortunately! your hand is over 21. You lost'))
+      req.agent.answer(req._('Unfortunately! You lost'))
     elif self.dealer_hand.evaluate() > 21:
-      req.agent.answer(req._('Congratulation! dealer hand is over 21. You won'))
+      req.agent.answer(req._('Congratulation! You won'))
       self.player_bankroll += self.player_bet * 2        
     elif self.player_hand.evaluate() == self.dealer_hand.evaluate():
       req.agent.answer(req._('Tie, no one won'))
     elif self.player_hand.evaluate() == 21:
-      req.agent.answer(req._('Blackjack! You won'))
+      req.agent.answer(req._('Congratulation! You won'))
       self.player_bankroll += math.ceil(self.player_bet * 3/2)        
     elif self.player_hand.evaluate() > self.dealer_hand.evaluate():
-      req.agent.answer(req._('Congratulation! You won.'))
+      req.agent.answer(req._('Congratulation! You won'))
       self.player_bankroll += self.player_bet * 2        
     elif self.player_hand.evaluate() < self.dealer_hand.evaluate():
       req.agent.answer(req._('Unfortunately! You lost'))
     else:
       req.agent.answer(req._('Tie'))
-
-    if len(self.shoe.cards) == 0:
-      req.agent.answer(req._('Shoe is empty'))
-      req.agent.answer(req._('Create a new one'))
+    if len(self.shoe.cards) < 10:
+      req.agent.answer(req._('Shoe is nearly empty'))
+      req.agent.answer(req._('A shoe containing {0} packets has been shuffled').format(self.number_of_packets))
       self.shoe.create(self.number_of_packets)
       self.shoe.shuffle()
-
-    req.agent.answer(req._('Bet for a new turn'))
+    self.player_action = self.NONE
     self.state = self.NEW_TURN
-    return req.agent.done()
-
+    return self
 
   def apply_rule(self, req):
     while(True):
@@ -307,7 +314,11 @@ class Game(object):
 
 # This entity will be shared among training data since it's not language specific
 
-en_help="""
+en_skill = """
+Blackjack {0} is a multiplayer card game where players play against one dealer... 
+"""
+
+en_rules = """
 Blackjack is a multiplayer card game where players play against one dealer. 
 Players who want entering the game  bet. 
 At the begin the dealer gives 2 cards face up to each player in game and take two cards one face down.
@@ -332,10 +343,12 @@ At any time, you can "See your hand", "See the dealer hand", "See your banckroll
 
 @training('en')
 def en_data(): return """
-%[help_blackjack]
-  how does blackjack skill work
-  give me help on blackjack skill
+%[blackjack_skill]
   what is blackjack skill
+
+%[blackjack_rules]
+  what are the blackjack rules
+  how to play blackjack
 
 %[play_blackjack]
   I want play blackjack
@@ -372,12 +385,12 @@ def en_data(): return """
   what is my hand
   seed my hand
   my hand
- 
+
 %[blackjack/show_dealer_hand]
   what is the dealer hand
   see dealer hand
   dealer hand
-  
+
 %[blackjack/bankroll]
   how many chips I have
   what is my bankroll
@@ -386,12 +399,23 @@ def en_data(): return """
 %[blackjack/quit]
   I quit
 
-%[blackjack/help]
-  give me some advice
+%[blackjack/shoe_status]
+  see shoe status
+
+%[blackjack/rules]
+  rules
+  what are the rules
+
+%[blackjack/contextual_help]
   hints
+  what can I do now
 """
 
-fr_help="""
+fr_skill = """
+Le blackjack v{0} est un jeu de carte de un à plusieurs joueurs qui jouent contre un donneur. 
+"""
+
+fr_rules="""
 Le blackjack est un jeu de carte de un à plusieurs joueurs qui jouent contre un donneur. 
 Les  joueurs qui souhaitent jouer déposent un pari (par exemple "Je mise  2"). 
 Le donneur ensuite distribue 2 cartes face ouverte à chaque joueur et prend  deux cartes dont une face cachée.
@@ -416,7 +440,11 @@ A tout moment, vous pouvez "Voir votre main", "Voir la main du donneur, "Voir vo
 
 @training('fr')
 def fr_data(): return """
-%[help_blackjack]
+%[blackjack_skill]
+  qu'est ce que la compétence blackjack 
+  qu'est ce que le blackjack 
+
+%[blackjack_rules]
   quelles sont les rêgles du blackjack
   comment se joue le blackjack
 
@@ -434,14 +462,14 @@ def fr_data(): return """
   hit
   tirer
   encore
-  encore une
+  donne
 
 %[blackjack/stand]
   stand
-  arrêter
-  rester
+  arrête
   refuser
-
+  c'est bon
+  c'est tout
 
 %[blackjack/double]
   double  
@@ -451,7 +479,6 @@ def fr_data(): return """
   je mise @[bet]
   nouvelle donne
   donner pour @[bet]
-
 
 @[bet](type=number)
   1
@@ -479,66 +506,85 @@ def fr_data(): return """
   abandonner
   je quitte le jeu
 
-%[blackjack/help]
+%[blackjack/shoe_status]
+  donne moi l'état du sabot
+
+%[blackjack/rules]
   quelles sont les rêgles
   aide
+
+%[blackjack/contextual_help]
   astuce
+  et maintenant
 """
 
 @translations('fr')
 def fr_translations(): return {
-  en_help : fr_help,
+  en_skill : fr_skill,
+  en_rules : fr_rules,
   'Goodbye': 'Au revoir et à bientôt',
   'Welcome in blackjack game':'Bienvenue dans le jeu du Blackjack',
   'A shoe containing {0} packets has been shuffled' : 'Un sabot contenant {0} paquet(s) de carte vient d\'être battu',
+  'Shoe is nearly empty' : 'Le sabot est presque vide',
   'You start with 100$  ships' : 'Vous commencez avec 100$ de jetons',
   'Bet to start the turn' : 'Miser pour commencer le jeu',
   'What is your bet?' : 'Qu\'elle est votre mise?',
   'No more card' : 'Plus de carte',
-  'You got a {0} and a {1}': 'Vous avez reçu {0} et {1}',
-  'Dealer got a {0} and a face down card':'Le donneur vient de recevoir {0} et une carte face cachée',
-  'Your got a {0}': 'Vous avez reçu {0}',
-  'Dealer hidden card is a {0}': 'La carte face cachée du donneur est {0}',
-  'Dealer got a {0}':'Le donneur vient de recevoir {0}',
-  'Unfortunately! your hand is over 21. You lost':'Malheureusement! Votre main dépasse 21. Vous avez perdu',
-  'Congratulation! dealer hand is over 21. You won':'Félicitation! Le main du donneur dépasse 21. Vous avez gagné',
+  'You got {0} and {1}' : 'Vous recevez {0} et {1}',
+  'Dealer got {0} and a face down card' : 'Le donneur reçoit {0} et une carte face cachée',
+  'Your got {0}': 'Vous recevez {0}',
+  'Dealer hidden card is {0}': 'La carte face cachée du donneur est {0}',  
+  'Dealer got {0}':'Le donneur reçoit {0}',
+  'You have busted!' : 'Vous sautez!',
+  'Dealer has busted!' : 'Le donneur saute!',
+  'You can either double, hit or stand' : 'Vous pouvez soit doubler, recevoir une carte supplémentaire (donner), ou refuser',
+  'You can either hit or stand' : 'Vous pouvez soit recevoir une carte supplémentaire (donner), ou refuser',
+  'Blackjack!' : 'Blackjack!',
   'Tie, no one won':'Egalité, personne n\'est vainqueur.',
-  'Blackjack! You won':'Blackjack! Vous avez gagné',
-  'Congratulation! You won.':'Félicitation! Vous avez gagner',
+  'You have busted' : 'Vous sautez!',
+  'Congratulation! You won':'Félicitation! Vous avez gagner',
   'Unfortunately! You lost':'Malheureusement! Vous avez perdu',
   'Tie' : 'Egalité',
   'Shoe is empty': 'Le sabot est vide',
   'Create a new one' : 'Remplissage d\'un nouveau sabot',
-  'Bet for a new turn' : 'Misez pour jouer',
+  'Bet to play' : 'Misez pour jouer',
   'Your bankroll is {0} chips' : 'Votre mise de fond est {0} jeton(s)',
-  'Your hand contains : {0}' : 'Votre main contient : {0}',
-  'The dealer hand contains (only visible cards) : {0}' : 'La main du donneur contient (cartes visibles uniquement) : {0}',
+  'Your hand contains : {0} and its actual value is {1}' : 'Votre main contient : {0} et est évaluée à {1}',
+  'The dealer hand contains : {0} and its actual values is {1}' : 'La main du donneur contient : {0} et est évaluée à {1}',
+  'Shoe contains {0} cards' : 'Le sabot contient {0} cartes', 
   '{0} of {1}': '{0} de {1}',
-  'ace':  'as',
-  '2':'2',
-  '3':'3',
-  '4':'4',
-  '5':'5',
-  '6':'6',
-  '7':'7',
-  '8':'8',
-  '9':'9',
-  '10':'10',
-  'jack':'valet',
-  'queen':'reine',
-  'king':'roi',
+  'an ace':  'un as',
+  'a 2':'un 2',
+  'a 3':'un 3',
+  'a 4':'un 4',
+  'a 5':'un 5',
+  'a 6':'un 6',
+  'a 7':'un 7',
+  'a 8':'un 8',
+  'a 9':'un 9',
+  'a 10':'un 10',
+  'a jack':'un valet',
+  'a queen':'une reine',
+  'a king':'un roi',
   'clubs':  'trèfles',
   'diamonds':'carreaux',
   'hearts': 'coeurs',
   'spades':'piques'
 }
 
-
 game = Game()
 
-@intent('help_blackjack')
-def on_help_blackjack(req):
-  req.agent.answer(req._(en_help))
+version = "v1.0"
+
+@intent('blackjack_skill')
+def on_blackjack_skill(req):
+  req.agent.answer(req._(en_skill).format(version))
+  return req.agent.done()
+
+
+@intent('blackjack_rules')
+def on_blackjack_rules(req):
+  req.agent.answer(req._(en_rules))
   return req.agent.done()
 
 @intent('play_blackjack')
@@ -586,16 +632,23 @@ def on_insurance(req):
   return game.apply_rule(req)
 """
 
+@intent('blackjack/contextual_help')
+def on_contextual_help(req):
+  global game
+  game.player_action = game.HELP
+  return game.apply_rule(req)
+
+
 @intent('blackjack/show_player_hand')
 def on_show_player_hand(req):
   global game
-  req.agent.answer(req._('Your hand contains : {0}').format(game.player_hand.answer(req)))
+  req.agent.answer(req._('Your hand contains : {0} and its actual value is {1}').format(game.player_hand.answer(req), game.player_hand.evaluate()))
   return req.agent.done()
 
 @intent('blackjack/show_dealer_hand')
 def on_show_dealer_hand(req):
   global game
-  req.agent.answer(req._('The dealer hand contains (only visible cards) : {0}').format(game.dealer_hand.answer(req)))
+  req.agent.answer(req._('The dealer hand contains : {0} and its actual values is {1}').format(game.dealer_hand.answer(req), game.dealer_hand.evaluate()))
   return req.agent.done()
 
 @intent('blackjack/bankroll')
@@ -604,9 +657,15 @@ def on_bankroll(req):
   req.agent.answer(req._('Your bankroll is {0} chips').format(game.player_bankroll))
   return req.agent.done()
 
-@intent('blackjack/help')
+@intent('blackjack/shoe_status')
+def on_shoe_status(req):
+  global game
+  req.agent.answer(req._('Shoe contains {0} cards').format(len(game.shoe.cards)))
+  return req.agent.done()
+
+@intent('blackjack/rules')
 def on_help(req):
-  req.agent.answer(req._(en_help))
+  req.agent.answer(req._(en_rules))
   return req.agent.done()
 
 @intent('blackjack/quit')
