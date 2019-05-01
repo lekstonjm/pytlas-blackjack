@@ -26,6 +26,7 @@ class Shoe(object):
     self.cards = []
     
   def create(self, shoe_number):
+    self.cards = []
     for _packet_index in range(shoe_number):
       for color in self.colors: 
         for index in range(0,len(self.figures)):                 
@@ -44,6 +45,8 @@ class Shoe(object):
       counter = counter - 1
 
   def draw(self):
+    if len(self.cards) == 0:
+      return None
     card = self.cards[0]
     self.cards = self.cards[-(len(self.cards)-1):]
     return card
